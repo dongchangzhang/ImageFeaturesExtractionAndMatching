@@ -5,28 +5,30 @@
 using namespace std;
 using namespace cv;
 
-int main()
+int main(int argc, const char *argv[])
 {
-    Mat im1 = imread("9.JPG");
-    Mat im2 = imread("10.JPG");
+    Mat im1 = imread(argv[1]);
+    Mat im2 = imread(argv[2]);
 
-    float x1, y1, x2, y2;
-    ifstream in("output.txt");
+    float x1, y1, x2, y2, distance;
+    ifstream in(argv[3]);
     cout << " - " << endl;
-    int i = 0;
-    while (in >> x1 >> y1 >> x2 >> y2) {
-        if (i >= 20) i = 0;
-        cout << x1 << " - " << y1 << " - " << x2 << " - " << y2 << endl;
-        circle(im1, Point2f(x1, y1), 5 + i, Scalar(i * 10, i * 5, 255 - i * 10), 2);
-        circle(im2, Point2f(x2, y2), 5 + i, Scalar(i * 10, i * 5, 255 - i * 10), 2);
-        i++;
+    cv::RNG rng(time(0));
+    srand((unsigned)time(NULL));
+    while (in >> x1 >> y1 >> x2 >> y2 >> distance) {
+        cout << "[" << x1 << ", " << y1 << "] - [" << x2 << ", " << y2 << "] - distance: " << distance << endl;
+        auto c1 = rng.uniform(0,255);
+        auto c2 = rng.uniform(0,255);
+        auto c3 = rng.uniform(0,255);
+        int r = rand() % 10 + 8;
+        circle(im1, Point2f(x1, y1), r, Scalar(c1, c2, c3), 2);
+        circle(im2, Point2f(x2, y2), r, Scalar(c1, c2, c3), 2);
     }
     in.close();
-    cout << " - " << endl;
-    namedWindow("2", WINDOW_NORMAL);
-    namedWindow("3", WINDOW_NORMAL);
-    imshow("2", im1);
-    imshow("3", im2);
+    namedWindow(argv[1], WINDOW_NORMAL);
+    namedWindow(argv[2], WINDOW_NORMAL);
+    imshow(argv[1], im1);
+    imshow(argv[2], im2);
     waitKey(0);
     return 0;
 }
