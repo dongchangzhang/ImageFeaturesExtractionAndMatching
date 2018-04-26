@@ -7,8 +7,8 @@ using namespace cv;
 
 int main(int argc, const char *argv[])
 {
-    Mat im1 = imread(argv[1]);
-    Mat im2 = imread(argv[2]);
+    cv::Mat im1 = imread(argv[1]);
+    cv::Mat im2 = imread(argv[2]);
 
     float x1, y1, x2, y2, distance;
     ifstream in(argv[3]);
