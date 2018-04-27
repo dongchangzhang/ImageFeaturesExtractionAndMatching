@@ -6,6 +6,8 @@
 #define _SHOW_IMAGE_
 // use gray image to detect keypoints -- 0
 #define INPUT_COLOR 0
+
+#define NN_MATCH_RATIO 0.8
 // function to match points
 // #define FLANN
 // #define BF
@@ -14,20 +16,32 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <vector>
+
 // opencv3
 #include <opencv2/opencv.hpp>
+#include <opencv2/features2d.hpp>
 #include <opencv2/xfeatures2d/nonfree.hpp>
-#include <vector>
 
 struct MatchedPoint{
     cv::Point2f p1;
     cv::Point2f p2;
     float distance;
+    MatchedPoint() {}
     MatchedPoint(cv::Point2f _p1, cv::Point2f _p2, float _d)
         : p1(_p1), p2(_p2), distance(_d) { }
 };
 
 class FeatureTool {
+public:
+    enum FeatureType {
+        SIFT,
+        SURF,
+        KAZE,
+        AKAZE,
+        HARRIS,
+        NONE,
+    };
 public:
 
     FeatureTool() {}
@@ -40,6 +54,12 @@ public:
         const std::string &objImage);
 
     /* get features, saving the keypoints into points and then return the descriptors */
+
+    int extractFeature(
+        const std::string &srcImage,
+        const FeatureType feature,
+        std::vector<cv::KeyPoint> &keyPoints,
+        cv::Mat &descriptors);
 
     // 1. sift
     cv::Mat extractSIFTFeature(
@@ -60,32 +80,28 @@ public:
     // 5. harris
     cv::Mat extractHarrisFeature(
         const std::string &srcImage,
-        std::vector<cv::KeyPoint> &points);
+        std::vector<cv::KeyPoint> &points,
+        int threshod);
 
     /* match features and get the match result: 'matches' */
 
     std::vector<std::vector<cv::DMatch>> matchPointsByFlann(
         const cv::Mat &qDescriptor,
-        const std::vector<cv::KeyPoint> &qKeypoints,
-        const std::string &srcImage,
         const cv::Mat &objDescriptor,
-        const std::vector<cv::KeyPoint> &objKeypoints,
-        const std::string &objImage);
+        const FeatureTool::FeatureType type=FeatureTool::NONE);
 
     std::vector<std::vector<cv::DMatch>> matchPointsByBF(
         const cv::Mat &qDescriptor,
-        const std::vector<cv::KeyPoint> &qKeypoints,
-        const std::string &srcImage,
         const cv::Mat &objDescriptor,
-        const std::vector<cv::KeyPoint> &objKeypoints,
-        const std::string &objImage);
+        const FeatureTool::FeatureType type=FeatureTool::NONE);
 
     /* filter: input 'matches' and then delete the outliers then return the final result*/
 
-    // 1. distance / distance > ratio
-    std::vector<cv::DMatch> getGoodMatches(const std::vector<std::vector<cv::DMatch>> &matches);
+    // 1. distance-best / distance-second-best > ratio
+    std::vector<cv::DMatch> getGoodMatches(
+        const std::vector<std::vector<cv::DMatch>> &matches);
 
-    // 2. ransac
+    // 2. ransac via fundamental or ? matrix
     std::vector<MatchedPoint> findInliersByRANSAC(
         const std::vector<cv::KeyPoint> &qKeypoints,
         const std::vector<cv::KeyPoint> &objKeypoints,
@@ -105,6 +121,12 @@ private:
         const std::string &obj,
         const std::vector<MatchedPoint> &mps,
         const std::string &windowName);
+    
+    void drawKeypoints(
+        const std::string &image,
+        const std::string &name,
+        const std::vector<cv::KeyPoint> &kps);
+
     // sort matched points by the distance
     void sortPointsByDistance(std::vector<MatchedPoint> &points);
 
