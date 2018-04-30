@@ -3,145 +3,143 @@
 /* api */
 std::vector<MatchedPoint> FeatureTool::getMatchedPoints(
         const std::string &srcImage,
-        const std::string &objImage)
+        const std::string &objImage,
+        FeatureTool::FeatureType type,
+        FeatureTool::Direction direction)
 {
-    // for test 
-    // cv::Mat Descriptor;
-    // std::vector<cv::KeyPoint> Keypoints;
-    // extractKAZEFeature(srcImage, Keypoints);
-    // std::cout << "KAZE " << Keypoints.size() << std::endl; 
-    // drawKeypoints(srcImage, "KAZE", Keypoints);
+    cv::Mat firstDesc;
+    cv::Mat secondDesc;
+    std::vector<cv::KeyPoint> firstKps;
+    std::vector<cv::KeyPoint> secondKps;
 
-    // drawKeypoints(srcImage, "SIFT", Keypoints);
-    
-    // return std::vector<MatchedPoint>();
+    cv::Ptr<cv::Feature2D> fp;
 
-    // test end
-    // extract features
+    init(fp, type);
 
-    cv::Mat qDescriptor;
-    std::vector<cv::KeyPoint> qKeypoints;
-    qDescriptor = extractSIFTFeature(srcImage, qKeypoints);
-    std::cout << "image1 keypoints: " << qKeypoints.size() << std::endl; 
+    extractFeature(srcImage, fp, firstKps, firstDesc);
+    extractFeature(objImage, fp, secondKps, secondDesc);
 
-    cv::Mat objDescriptor;
-    std::vector<cv::KeyPoint> objKeypoints;
-    objDescriptor = extractSIFTFeature(objImage, objKeypoints);
-    std::cout << "image2 keypoints: " << objKeypoints.size() << std::endl; 
     // match
-    auto matches = matchPointsByBF(qDescriptor, objDescriptor, FeatureTool::SIFT);
+    auto matches = matchPointsByBF(firstDesc, secondDesc, type);
 
-    std::cout << "matches: " << matches.size() << std::endl; 
-
-    // filter
+    // good matches
     auto goodMatches = getGoodMatches(matches);
+    drawMatch(srcImage, objImage, matches2MatchedPoints(firstKps, secondKps, goodMatches), "Origin");
 
-    std::cout << "good matches: " << goodMatches.size() << std::endl; 
+    // ransac
+    auto matchedPoints = findInliersByRANSAC(firstKps, secondKps, goodMatches);
+    drawMatch(srcImage, objImage, matchedPoints, "After");
 
-    drawMatch(srcImage, objImage, matches2MatchedPoints(qKeypoints, objKeypoints, goodMatches), "Origin");
-
-    std::cout << " begin ransac " << std::endl;
-    auto points = findInliersByRANSAC(qKeypoints, objKeypoints, goodMatches);
-
-    std::cout << "ransac: " << points.size() << std::endl; 
-
-    drawMatch(srcImage, objImage, points, "After");
-
+    // result - 1
+    sortPointsByDistance(matchedPoints);
+    // both direction ?
+    if (direction == BOTH) {
+        auto rmatches = matchPointsByBF(secondDesc, firstDesc, type);
+        auto rgoodMatches = getGoodMatches(rmatches);
+        auto rmatchedPoints = findInliersByRANSAC(secondKps, firstKps, rgoodMatches);
+        // result - 2
+        sortPointsByDistance(rmatchedPoints);
+        // filter
+        matchSymmetric(matchedPoints, rmatchedPoints, matchedPoints);
+    }
     // result
-    sortPointsByDistance(points);
-
-    return points;
+    return matchedPoints;
 }
 
-// sift
-cv::Mat FeatureTool::extractSIFTFeature(
-    const std::string &srcImage, 
-    std::vector<cv::KeyPoint> &points)
+int FeatureTool::init(cv::Ptr<cv::Feature2D> &fp, FeatureTool::FeatureType type)
 {
-    points.clear();
-    cv::Mat descriptors;
-    auto img = cv::imread(srcImage, INPUT_COLOR);
-
-    cv::Ptr<cv::Feature2D> sift = cv::xfeatures2d::SIFT::create();
-    sift->detectAndCompute(img, cv::noArray(), points, descriptors);
-    return descriptors;
+    switch (type) {
+        case SIFT:
+            fp = cv::xfeatures2d::SIFT::create();
+            break;
+        case SURF:
+            fp = cv::xfeatures2d::SURF::create();
+            break;
+        case KAZE:
+            fp = cv::KAZE::create();
+            break;
+        case AKAZE:
+            fp = cv::AKAZE::create();
+            break;
+        default:
+            return -1;
+    }
+    return 0;
 }
-
-// 2. kaze
-cv::Mat FeatureTool::extractKAZEFeature(
-    const std::string &srcImage,
-    std::vector<cv::KeyPoint> &points)
+int FeatureTool::extractFeature(
+    const std::string &image,
+    const cv::Ptr<cv::Feature2D> &fp,
+    std::vector<cv::KeyPoint> &kps,
+    cv::Mat &desc)
 {
-
-    points.clear();
-    cv::Mat descriptors;
-    auto img = cv::imread(srcImage, INPUT_COLOR);
-
-    cv::Ptr<cv::KAZE> kaze = cv::KAZE::create();
-    kaze->detectAndCompute(img, cv::noArray(), points, descriptors);
-    return descriptors;
+    auto img = cv::imread(image, INPUT_COLOR);
+    fp->detectAndCompute(img, cv::noArray(), kps, desc);
+    return 0;
 }
-// 3. akaze
-cv::Mat FeatureTool::extractAKAZEFeature(
-    const std::string &srcImage,
-    std::vector<cv::KeyPoint> &points)
-{
-
-    points.clear();
-    cv::Mat descriptors;
-    auto img = cv::imread(srcImage, INPUT_COLOR);
-
-    cv::Ptr<cv::AKAZE> akaze = cv::AKAZE::create();
-    akaze->detectAndCompute(img, cv::noArray(), points, descriptors);
-    return descriptors;
-}
-
-// 4. surf
-cv::Mat FeatureTool::extractSURFFeature(
-    const std::string &srcImage,
-    std::vector<cv::KeyPoint> &points)
-{
-
-    points.clear();
-    cv::Mat descriptors;
-    auto img = cv::imread(srcImage, INPUT_COLOR);
-
-    cv::Ptr<cv::Feature2D> surf = cv::xfeatures2d::SIFT::create();
-    surf->detectAndCompute(img, cv::noArray(), points, descriptors);
-    return descriptors;
-}
-
 // 5. harris
 cv::Mat FeatureTool::extractHarrisFeature(
     const std::string &srcImage,
     std::vector<cv::KeyPoint> &points,
-    int threshod)
+    int thresh)
 {
-    cv::Mat dst, normDst;
+    // cv::Mat dst, normDst, scaleDst;
+    cv::Mat descriptors;
     cv::Mat img = cv::imread(srcImage, INPUT_COLOR);
-    dst = cv::Mat::zeros(img.size(), CV_32FC1);
-    cv::cornerHarris(img, dst, 2, 3, 0.04);
-    cv::normalize(dst, dst, 0, 255, cv::NORM_MINMAX, CV_32FC1, cv::Mat());
+    cv::Mat show = cv::imread(srcImage);
+    // dst = cv::Mat::zeros(img.size(), CV_32FC1);
+    std::vector<cv::Point2f> corners;
 
-    return cv::Mat();
+    // cv::cornerHarris(img, dst, 2, 3, 0.04);
+    // cv::normalize(dst, normDst, 0, 255, cv::NORM_MINMAX, CV_32FC1, cv::Mat());
+    // cv::convertScaleAbs(normDst, scaleDst);
+    // for (int j = 0; j < normDst.rows; ++j) {
+    //     for (int i = 0; i < normDst.cols; ++i) {
+    //         if ((int)normDst.at<float>(j, i) > thresh + 90) {
+    //             std::cout << "harris: [" << i << ", " << j << "]" << std::endl;
+    //             corners.push_back(cv::Point2f(i, j));
+    //             // cv::circle(show, cv::Point(i, j), 5, cv::Scalar(0, 0, 255), 2, 8, 0);
+    //         }
+    //     }
+    // }
+
+    // paras
+    double qualityLevel = 0.01;
+    double minDistance = 10;
+    int blockSize = 3;
+    double k = 0.04;
+    cv::goodFeaturesToTrack(img, corners, 10000, qualityLevel, minDistance, cv::Mat(), blockSize, true, k);
+
+    cv::TermCriteria criteria = cv::TermCriteria(cv::TermCriteria::EPS + cv::TermCriteria::MAX_ITER, 40, 0.001);
+    cv::cornerSubPix(img, corners, cv::Size(5, 5), cv::Size(-1, -1), criteria);
+    // for (auto corner : corners) {
+    //     std::cout << "harris: [" << corner.x << ", " << corner.y << "]" << std::endl;
+    //     cv::circle(show, corner, 5, cv::Scalar(0, 0, 255), 2, 8, 0);
+    // }
+    cv::KeyPoint::convert(corners, points, 1, 1, 0, -1);
+    cv::Ptr<cv::Feature2D> sift = cv::xfeatures2d::SIFT::create();
+    sift->compute(img, points, descriptors);
+    // cv::namedWindow("harris", cv::WINDOW_NORMAL);
+    // cv::imshow("harris", show);
+    // cv::waitKey(1000);
+    return descriptors;
 }
 
 // match
 
 std::vector<std::vector<cv::DMatch>> FeatureTool::matchPointsByFlann(
-    const cv::Mat &qDescriptor,
-    const cv::Mat &objDescriptor,
+    const cv::Mat &qDesc,
+    const cv::Mat &objDesc,
     const FeatureTool::FeatureType type)
 {
     cv::FlannBasedMatcher matcher;
     std::vector<std::vector<cv::DMatch>> matches;
-    matcher.knnMatch(qDescriptor, objDescriptor, matches, 2);
+    matcher.knnMatch(qDesc, objDesc, matches, 2);
     return matches;
 }
 
 std::vector<std::vector<cv::DMatch>> FeatureTool::matchPointsByBF(
-    const cv::Mat &qDescriptor,
-    const cv::Mat &objDescriptor,
+    const cv::Mat &qDesc,
+    const cv::Mat &objDesc,
     const FeatureTool::FeatureType type)
 {
     auto distanceType = cv::NORM_L2;
@@ -150,7 +148,7 @@ std::vector<std::vector<cv::DMatch>> FeatureTool::matchPointsByBF(
     cv::BFMatcher matcher(distanceType);
 
     std::vector<std::vector<cv::DMatch>> matches;
-    matcher.knnMatch(qDescriptor, objDescriptor, matches, 2);
+    matcher.knnMatch(qDesc, objDesc, matches, 2);
     return matches;
 }
 
@@ -174,6 +172,7 @@ std::vector<MatchedPoint> FeatureTool::findInliersByRANSAC(
         const std::vector<cv::KeyPoint> &objKeypoints,
         const std::vector<cv::DMatch> &matches)
 {
+    if (matches.size() == 0) return std::vector<MatchedPoint>();
     // get the location of keyPoints
     std::vector<float> distances;
     std::vector<cv::Point2f> queryCoord;
@@ -184,7 +183,6 @@ std::vector<MatchedPoint> FeatureTool::findInliersByRANSAC(
         queryCoord.push_back(qKeypoints[match.queryIdx].pt);
         objectCoord.push_back(objKeypoints[match.trainIdx].pt);
     }
-    
     // get homography / fundamental matrix
     cv::Mat mask;
     std::vector<float> distanceInliers;
@@ -192,21 +190,48 @@ std::vector<MatchedPoint> FeatureTool::findInliersByRANSAC(
     std::vector<cv::Point2f> sceneInliers;
     cv::Mat H = findFundamentalMat(queryCoord, objectCoord, mask, cv::FM_RANSAC);
     // cv::Mat H = findHomography( queryCoord, objectCoord, cv::RANSAC, 10, mask);
-    int inliers_cnt = 0, outliers_cnt = 0;
     for (size_t j = 0; j < mask.rows; ++j){
         if (mask.at<uchar>(j) == 1){
             queryInliers.push_back(queryCoord[j]);
             sceneInliers.push_back(objectCoord[j]);
             distanceInliers.push_back(distances[j]);
-            inliers_cnt++;
-        }else {
-            outliers_cnt++;
         }
     }
-    
     return matches2MatchedPoints(queryInliers, sceneInliers, distances);
 }
 
+size_t FeatureTool::matchSymmetric(
+    const std::vector<MatchedPoint> &matchedPoint,
+    const std::vector<MatchedPoint> &rmatchedPoint,
+    std::vector<MatchedPoint> &result)
+{
+    std::vector<MatchedPoint> r;
+    std::unordered_map<cv::Point, std::vector<cv::Point>, hashFunc, cmpFun> record;
+    for (auto p : rmatchedPoint) {
+        cv::Point from((int)p.p2.x, (int)p.p2.y);
+        cv::Point to((int)p.p1.x, (int) p.p1.y);
+        if (record.find(from) != record.end()) {
+            record[from].push_back(to);
+        } else {
+            std::vector<cv::Point> tmp{to};
+            record[from] = tmp;
+        }
+    }
+    for (auto p : matchedPoint) {
+        cv::Point from((int)p.p1.x, (int) p.p1.y);
+        cv::Point to((int)p.p2.x, (int) p.p2.y);
+        if (record.find(from) != record.end()) {
+            for (auto tmp : record[from]) {
+                if (to == tmp) {
+                    r.push_back(p);
+                    break;
+                }
+            }
+        } 
+    }
+    result = r;
+    return result.size();
+}
 void FeatureTool::writeMatchedPointsIntoFile(const std::vector<MatchedPoint> &mps, const std::string &name)
 {
     if (name.size() == 0)
@@ -223,7 +248,9 @@ void FeatureTool::drawMatch(
         const std::string &src,
         const std::string &obj,
         const std::vector<MatchedPoint> &mps,
-        const std::string &windowName){
+        const std::string &windowName,
+        const int type) 
+{
     cv::Mat srcColorImage = cv::imread(src);
     cv::Mat dstColorImage = cv::imread(obj);
     // Create a image for displaying mathing keypoints
@@ -242,18 +269,29 @@ void FeatureTool::drawMatch(
     // Draw line between nearest neighbor pairs
     std::cout << "Drawing Points: the Numsber of Matched Points is: " << mps.size() << std::endl;
 
+    srand((unsigned)time(NULL));
     cv::RNG rng(time(0));
     for (auto mp : mps) {
         cv::Point2f pt1 = mp.p1;
         cv::Point2f pt2 = mp.p2;
         cv::Point2f from = pt1;
         cv::Point2f to   = cv::Point(srcColorImage.size().width + pt2.x, srcColorImage.size().height + pt2.y);
-        cv::line(matchingImage, from, to, cv::Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)));
+        auto c1 = rng.uniform(10,255);
+        auto c2 = rng.uniform(10,255);
+        auto c3 = rng.uniform(10,255);
+        if (type == 0)
+            cv::line(matchingImage, from, to, cv::Scalar(0, 0, 255));
+        else {
+            int r = rand() % 10 + 8;
+            cv::circle(matchingImage, from, r, cv::Scalar(c1, c2, c3), 2);
+            cv::circle(matchingImage, to, r, cv::Scalar(c1, c2, c3), 2);
+        }
     }
     // Display mathing image
     cv::namedWindow(windowName, cv::WINDOW_NORMAL);
     cv::imshow(windowName, matchingImage);
     cv::waitKey(0);
+    cv::destroyAllWindows();
 }
 
 void FeatureTool::drawKeypoints(
