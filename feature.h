@@ -3,7 +3,7 @@
 #define __feature_h__
 
 // if define, then you will see the image with matched result
-#define _SHOW_IMAGE_AND_LOG_
+// #define _SHOW_IMAGE_AND_LOG_
 // use gray image to detect keypoints -- 0
 #define INPUT_COLOR 0
 

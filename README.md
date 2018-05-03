@@ -53,6 +53,10 @@ make
 
 ### 接口介绍
 
+> 使用该工具，只需要用到 feature.h 和feature.cpp两个文件
+
+> 如果开启debug模式，需要查看运行过程中的输出：特征数目，绘制匹配结果等，请到feature.h中将#define _SHOW_IMAGE_AND_LOG_取消注释
+
 ```cpp
 // api for feature match
 std::vector<MatchedPoint> getMatchedPoints(
