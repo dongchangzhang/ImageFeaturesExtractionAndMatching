@@ -2,16 +2,12 @@
 #ifndef __feature__h__
 #define __feature_h__
 
-// show matched image ?
-#define _SHOW_IMAGE_
+// if define, then you will see the image with matched result
+#define _SHOW_IMAGE_AND_LOG_
 // use gray image to detect keypoints -- 0
 #define INPUT_COLOR 0
 
 #define NN_MATCH_RATIO 0.8
-// function to match points
-// #define FLANN
-// #define BF
-#define RF
 
 #include <algorithm>
 #include <fstream>
@@ -24,6 +20,7 @@
 #include <opencv2/features2d.hpp>
 #include <opencv2/xfeatures2d/nonfree.hpp>
 
+// struct fro save matched result
 struct MatchedPoint{
     cv::Point2f p1;
     cv::Point2f p2;
@@ -33,22 +30,24 @@ struct MatchedPoint{
         : p1(_p1), p2(_p2), distance(_d) { }
 };
 
-struct hashFunc 
-{  
-    inline size_t operator()(const cv::Point &point) const  
-    {  
-         return (point.x + point.y) % 499;  
-    }  
-};  
+// hash functions for unordered_map
+struct hashFunc
+{
+    inline size_t operator()(const cv::Point &point) const
+    {
+         return (point.x + point.y) % 499;
+    }
+};
 
-struct cmpFun 
-{  
-    inline bool operator()(const cv::Point &p1, const cv::Point &p2) const  
-    {  
-         return p1.x == p2.x && p1.y == p2.y;  
-    }  
-};  
+struct cmpFun
+{
+    inline bool operator()(const cv::Point &p1, const cv::Point &p2) const
+    {
+         return p1.x == p2.x && p1.y == p2.y;
+    }
+};
 
+// extract features and match them
 class FeatureTool {
 public:
     enum FeatureType {
@@ -76,9 +75,7 @@ public:
         FeatureType type=SIFT,
         Direction direction=SINGLE);
 
-    /* get features, saving the keypoints into points and then return the descriptors */
-
-
+    // init cv::Ptr by feature type
     int init(cv::Ptr<cv::Feature2D> &fp, FeatureType type);
 
     int extractFeature(
@@ -111,7 +108,7 @@ public:
     std::vector<cv::DMatch> getGoodMatches(
         const std::vector<std::vector<cv::DMatch>> &matches);
 
-    // 2. ransac via fundamental or ? matrix
+    // 2. ransac via fundamental or essential matrix
     std::vector<MatchedPoint> findInliersByRANSAC(
         const std::vector<cv::KeyPoint> &qKeypoints,
         const std::vector<cv::KeyPoint> &objKeypoints,
@@ -123,12 +120,12 @@ public:
         const std::vector<MatchedPoint> &rmatchedPoint,
         std::vector<MatchedPoint> &result);
 
+    /* tools */
+
     // write matched result into file
     void writeMatchedPointsIntoFile(
         const std::vector<MatchedPoint> &mps,
         const std::string &name);
-
-    /* tools */
 
     // draw match result in images
     void drawMatch(
@@ -146,7 +143,6 @@ public:
 private:
     // sort matched points by the distance
     void sortPointsByDistance(std::vector<MatchedPoint> &points);
-
 
     std::vector<MatchedPoint> matches2MatchedPoints(
         const std::vector<cv::KeyPoint> &qKeypoints,

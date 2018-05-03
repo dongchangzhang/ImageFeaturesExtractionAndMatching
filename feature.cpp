@@ -14,33 +14,45 @@ std::vector<MatchedPoint> FeatureTool::getMatchedPoints(
 
     cv::Ptr<cv::Feature2D> fp;
 
-    init(fp, type);
+    int ok0 = init(fp, type);
+    int ok1 = extractFeature(srcImage, fp, firstKps, firstDesc);
+    int ok2 = extractFeature(objImage, fp, secondKps, secondDesc);
 
-    extractFeature(srcImage, fp, firstKps, firstDesc);
-    extractFeature(objImage, fp, secondKps, secondDesc);
-
+    if (ok0 == -1 || ok1 == -1 || ok2 == -1) {
+        return std::vector<MatchedPoint>();
+    }
     // match
     auto matches = matchPointsByBF(firstDesc, secondDesc, type);
 
     // good matches
     auto goodMatches = getGoodMatches(matches);
-    drawMatch(srcImage, objImage, matches2MatchedPoints(firstKps, secondKps, goodMatches), "Origin");
 
     // ransac
     auto matchedPoints = findInliersByRANSAC(firstKps, secondKps, goodMatches);
-    drawMatch(srcImage, objImage, matchedPoints, "After");
 
-    // result - 1
+#ifdef _SHOW_IMAGE_AND_LOG_
+    std::cout << "the number of feature(image1): " << firstKps.size() << std::endl;
+    std::cout << "the number of feature(image2): " << secondKps.size() << std::endl;
+    std::cout << "the number of good matches(by distance): " << goodMatches.size() << std::endl;
+    drawMatch(srcImage, objImage, matches2MatchedPoints(firstKps, secondKps, goodMatches), "by distance");
+    std::cout << "the number of good matches(by dist + ransac): " << matchedPoints.size() << std::endl;
+    drawMatch(srcImage, objImage, matchedPoints, "by distance + ransac");
+#endif
+    // result  1
     sortPointsByDistance(matchedPoints);
     // both direction ?
     if (direction == BOTH) {
         auto rmatches = matchPointsByBF(secondDesc, firstDesc, type);
         auto rgoodMatches = getGoodMatches(rmatches);
         auto rmatchedPoints = findInliersByRANSAC(secondKps, firstKps, rgoodMatches);
-        // result - 2
+        // result  2
         sortPointsByDistance(rmatchedPoints);
         // filter
         matchSymmetric(matchedPoints, rmatchedPoints, matchedPoints);
+#ifdef _SHOW_IMAGE_AND_LOG_
+    std::cout << "the number of good matches(by dist + ransac + both direction): " << matchedPoints.size() << std::endl;
+    drawMatch(srcImage, objImage, matchedPoints, "by distance + ransac + both direction");
+#endif
     }
     // result
     return matchedPoints;
@@ -62,6 +74,7 @@ int FeatureTool::init(cv::Ptr<cv::Feature2D> &fp, FeatureTool::FeatureType type)
             fp = cv::AKAZE::create();
             break;
         default:
+            std::cerr << "Error: Can not init cv::Ptr" << std::endl;
             return -1;
     }
     return 0;
@@ -73,6 +86,10 @@ int FeatureTool::extractFeature(
     cv::Mat &desc)
 {
     auto img = cv::imread(image, INPUT_COLOR);
+    if (img.empty()) {
+        std::cerr << "Error: open image failed: " << image << std::endl;
+        return -1;
+    }
     fp->detectAndCompute(img, cv::noArray(), kps, desc);
     return 0;
 }
@@ -118,14 +135,10 @@ cv::Mat FeatureTool::extractHarrisFeature(
     cv::KeyPoint::convert(corners, points, 1, 1, 0, -1);
     cv::Ptr<cv::Feature2D> sift = cv::xfeatures2d::SIFT::create();
     sift->compute(img, points, descriptors);
-    // cv::namedWindow("harris", cv::WINDOW_NORMAL);
-    // cv::imshow("harris", show);
-    // cv::waitKey(1000);
     return descriptors;
 }
 
 // match
-
 std::vector<std::vector<cv::DMatch>> FeatureTool::matchPointsByFlann(
     const cv::Mat &qDesc,
     const cv::Mat &objDesc,
@@ -153,7 +166,7 @@ std::vector<std::vector<cv::DMatch>> FeatureTool::matchPointsByBF(
 }
 
 // filter
-
+//
 std::vector<cv::DMatch> FeatureTool::getGoodMatches(const std::vector<std::vector<cv::DMatch>> &matches)
 {
     // Lowe's raw feature
@@ -315,7 +328,7 @@ void FeatureTool::drawKeypoints(
 }
 void FeatureTool::sortPointsByDistance(std::vector<MatchedPoint> &points)
 {
-    sort(points.begin(), points.end(), 
+    sort(points.begin(), points.end(),
     [](MatchedPoint p1, MatchedPoint p2) { return p1.distance < p2.distance; });
 }
 
